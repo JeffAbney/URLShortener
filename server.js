@@ -5,7 +5,10 @@ var mongo = require('mongodb');
 var mongoose = require('mongoose');
 var bodyParser = require('body-parser');
 var cors = require('cors');
+var dns = require('dns');
+
 var app = express();
+
 
 // Basic Configuration 
 var port = process.env.PORT || 3123;
@@ -47,20 +50,42 @@ MongoClient.connect(uri, { useNewUrlParser: true }, (error, client) => {
         res.json({ original_url: oldUrl, short_url: count });
       })
     }
-    collection.findOne({ original_url: oldUrl }, (error, doc) => {
-      if (error) return next(error);
-      if (doc == null) {
-        console.log("It's a new URL!");
-        db.collection('Url').count()
-          .then(function (count) {
-            setShortUrl(count);
-          })
-      } else {
-        console.log("URL already exists in collection")
-        res.json({original_url: oldUrl, short_url: doc.short_url});
-      }
-    })
-  })
+    let isUrl = function validURL(str) {
+      var pattern = new RegExp('^(https?:\\/\\/)?'+ // protocol
+      '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|'+ // domain name
+      '((\\d{1,3}\\.){3}\\d{1,3}))'+ // OR ip (v4) address
+      '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*'+ // port and path
+      '(\\?[;&a-z\\d%_.~+=-]*)?'+ // query string
+      '(\\#[-a-z\\d_]*)?$','i'); // fragment locator
+      return !!pattern.test(str);
+    }
+
+    //Check to see if it's a valid site
+    if (isUrl(oldUrl)) {
+      dns.lookup(oldUrl, (err, address, family) => {
+        if (err) return res.json({ error: "Website not found" });
+        console.log(address);
+
+        collection.findOne({ original_url: oldUrl }, (error, doc) => {
+          if (error) return next(error);
+          if (doc == null) {
+            console.log("It's a new URL!");
+            db.collection('Url').count()
+              .then(function (count) {
+                setShortUrl(count);
+              })
+          } else {
+            console.log("URL already exists in collection")
+            res.json({ original_url: oldUrl, short_url: doc.short_url });
+          }
+        })
+      })
+    } else {
+      res.json({error: "Not a valid URL"})
+    }
+  });
+
+
 
   app.listen(port, function () {
     console.log('Node.js listening ... port ' + port);
