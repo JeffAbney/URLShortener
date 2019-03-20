@@ -11,7 +11,7 @@ var app = express();
 
 
 // Basic Configuration 
-var port = process.env.PORT || 3123;
+var port = process.env.PORT || 3124;
 
 /** this project needs a db !! **/
 // mongoose.connect(process.env.MONGOLAB_URI);
@@ -44,12 +44,18 @@ MongoClient.connect(uri, { useNewUrlParser: true }, (error, client) => {
   app.post('/api/shorturl/new', (req, res, next) => {
     let oldUrl = req.body.url;
     let setShortUrl = function (count) {
-      collection.insert({ original_url: oldUrl, short_url: count }, (error, results) => {
+      collection.findOne({ short_url: count }, (error, doc) => {
         if (error) return next(error);
-        console.log(results);
-        res.json({ original_url: oldUrl, short_url: count });
-      })
-    }
+        if (doc == null) {
+          collection.insert({ original_url: oldUrl, short_url: count }, (error, results) => {
+          if (error) return res.json({"error": "something went wrong"});
+          return res.json({ original_url: oldUrl, short_url: count });
+        })} else {
+      ++count;
+      setShortUrl(count);
+        }
+    })
+  }
     let isUrl = function validURL(str) {
       var pattern = new RegExp('^(https?:\\/\\/)?'+ // protocol
       '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|'+ // domain name
@@ -62,9 +68,8 @@ MongoClient.connect(uri, { useNewUrlParser: true }, (error, client) => {
 
     //Check to see if it's a valid site
     if (isUrl(oldUrl)) {
-      dns.lookup(oldUrl, (err, address, family) => {
+      dns.lookup(oldUrl.replace(/^https?\:\/\//i, ""), (err, address, family) => {
         if (err) return res.json({ error: "Website not found" });
-        console.log(address);
 
         collection.findOne({ original_url: oldUrl }, (error, doc) => {
           if (error) return next(error);
@@ -85,6 +90,21 @@ MongoClient.connect(uri, { useNewUrlParser: true }, (error, client) => {
     }
   });
 
+  app.get("/api/shorturl/:n", function (req, res, next) {
+    let num = parseInt(req.params.n);
+    console.log("number " + num);
+    collection.findOne({ short_url: num }, (error, doc) => {
+      if (error) return next(error);
+      if (doc == null) {
+        console.log("No such document in database");
+        next("No such short URL in database")
+      } else {
+        console.log("Redirecting to website")
+        console.log(doc);
+        res.redirect(doc.original_url );
+      }
+    })
+  });
 
 
   app.listen(port, function () {
